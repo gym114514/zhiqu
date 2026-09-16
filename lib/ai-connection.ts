@@ -63,6 +63,14 @@ export function statusError(status: number) {
  if (status === 400 || status === 404 || status === 422) return "服务未接受请求，请检查 API 地址、模型名称，或尝试关闭 JSON 模式。";
  return `AI 服务暂时不可用（HTTP ${status}），请稍后重试。`;
 }
+// Edge 运行时把 redirect:"error" 视为非法取值，并在发出请求前抛 TypeError，
+// 因此统一用 "manual" 再自行检查 3xx，避免被重定向带到别的主机、连带泄露密钥。
+export const REDIRECT_MODE = "manual" as const;
+export function assertUpstreamResponse(response: Response) {
+ if (response.status >= 300 && response.status < 400)
+  throw new Error("服务要求跳转到其他地址，出于安全考虑已停止；请确认 API 地址填写正确。");
+ return response;
+}
 export async function limitedText(response: Response, maxBytes = 1000000) {
  if (!response.body) throw new Error("AI 服务没有返回内容。");
  const reader = response.body.getReader(); const decoder = new TextDecoder(); let result = ""; let size = 0;

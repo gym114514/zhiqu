@@ -1,6 +1,13 @@
 import { ADAPTIVE_WORKFLOW, adaptiveJsonSchema, validExample, type AdaptiveLesson } from "./adaptive";
 import { parseAnyLesson, isAdaptiveLesson, ScriptImportError } from "./script";
-import { canRelay, chatBody, chatText, completionUrl, limitedText, statusError, validateConnection, type AIConnection, type ChatRequest } from "./ai-connection";
+import { assertUpstreamResponse, canRelay, chatBody, chatText, completionUrl, limitedText, REDIRECT_MODE, statusError, validateConnection, type AIConnection, type ChatRequest } from "./ai-connection";
+
+// 服务端一旦回了 HTML（路由不存在、旧版本、边缘错误页），裸 JSON.parse 会抛出
+// V8 原文错误（Unexpected token '<'），让人误以为是密钥或地址问题。
+function readRelayJson(raw: string, status: number) {
+ try { return JSON.parse(raw) as { error?: unknown; text?: unknown }; }
+ catch { throw new Error(`学习机服务没有返回 JSON（HTTP ${status}），可能页面版本较旧或服务未正常启动；请强制刷新后重试。`); }
+}
 
 export async function requestChat(input: ChatRequest, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<string> {
  signal.throwIfAborted();
@@ -9,16 +16,17 @@ export async function requestChat(input: ChatRequest, signal: AbortSignal, fetch
   const response = await fetcher(relay ? "/api/ai/chat" : endpoint, {
    method: "POST", headers: { "Content-Type": "application/json", ...(!relay ? { Authorization: `Bearer ${config.apiKey}` } : {}) },
    body: JSON.stringify(relay ? { ...input, connection: config } : chatBody({ ...input, connection: config })),
-   credentials: relay ? "same-origin" : "omit", referrerPolicy: "no-referrer", redirect: "error",
+   credentials: relay ? "same-origin" : "omit", referrerPolicy: "no-referrer", redirect: REDIRECT_MODE,
    signal: AbortSignal.any([signal, AbortSignal.timeout(130000)]),
   });
+  if (relay) assertUpstreamResponse(response);
   if (!response.ok) {
-   if (relay) { const data = JSON.parse(await limitedText(response, 10000)); throw new Error(typeof data.error === "string" ? data.error : statusError(response.status)); }
+   if (relay) { const data = readRelayJson(await limitedText(response, 10000), response.status); throw new Error(typeof data.error === "string" ? data.error : statusError(response.status)); }
    await response.body?.cancel(); throw new Error(statusError(response.status));
   }
   const raw = await limitedText(response);
   if (!relay) return chatText(raw);
-  const data = JSON.parse(raw);
+  const data = readRelayJson(raw, response.status);
   if (typeof data.text !== "string" || !data.text.trim() || data.text.length > 100000) throw new Error("AI 没有返回完整内容。");
   return data.text;
  } catch (e) {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { completionUrl, canRelay, chatBody, chatText, emptyConnection, persistConnection, readConnection, STORAGE_KEY, limitedText } from "../lib/ai-connection";
+import { completionUrl, canRelay, chatBody, chatText, emptyConnection, persistConnection, readConnection, STORAGE_KEY, limitedText, REDIRECT_MODE } from "../lib/ai-connection";
 import { generateWithConnection, parseModelLesson, requestChat, MODEL_WORKFLOW } from "../lib/ai-client";
 import { POST } from "../app/api/ai/chat/route";
 import { validExample, adaptiveLessonSchema } from "../lib/adaptive";
@@ -37,7 +37,7 @@ test("custom endpoints use direct requests without cookies or redirects; keys no
  let called = false;
  const fetcher: typeof fetch = async (url, init) => {
   called = true; assert.equal(url, "https://ai.example/v1/chat/completions");
-  assert.equal(init?.credentials, "omit"); assert.equal(init?.redirect, "error"); assert.equal(init?.referrerPolicy, "no-referrer");
+  assert.equal(init?.credentials, "omit"); assert.equal(init?.redirect, REDIRECT_MODE); assert.equal(init?.referrerPolicy, "no-referrer");
   assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer " + config.apiKey);
   return Response.json({ choices: [{ message: { content: "ok" } }] });
  };
@@ -58,10 +58,12 @@ test("relay forwards key only to official endpoint and sanitizes upstream errors
  const original = globalThis.fetch;
  const req = () => new Request("https://learning.example/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://learning.example" }, body: JSON.stringify(input) });
  try {
-  globalThis.fetch = async (url, init) => { assert.equal(url, "https://api.deepseek.com/chat/completions"); assert.equal(init?.redirect, "error"); assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer " + config.apiKey); return Response.json({ choices: [{ message: { content: "ok" } }] }); };
+  globalThis.fetch = async (url, init) => { assert.equal(url, "https://api.deepseek.com/chat/completions"); assert.equal(init?.redirect, REDIRECT_MODE); assert.notEqual(init?.redirect, "error"); assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer " + config.apiKey); return Response.json({ choices: [{ message: { content: "ok" } }] }); };
   const success = await POST(req()); assert.deepEqual(await success.json(), { text: "ok" }); assert.equal(success.headers.get("cache-control"), "no-store");
   globalThis.fetch = async () => new Response(config.apiKey, { status: 401 });
   const failure = await POST(req()); const text = await failure.text(); assert.match(text, /密钥无效/); assert.ok(!text.includes(config.apiKey));
+  globalThis.fetch = async () => new Response(null, { status: 302, headers: { location: "https://evil.example/collect" } });
+  const redirected = await POST(req()); assert.match(await redirected.text(), /跳转/);
  } finally { globalThis.fetch = original; }
 });
 test("model provenance survives export/import; empty sources need explicit status", () => {

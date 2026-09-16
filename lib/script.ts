@@ -3,7 +3,7 @@ import { adaptiveLessonSchema, adaptiveJsonSchema, ADAPTIVE_WORKFLOW, validExamp
 export type LearningScript=Lesson|AdaptiveLesson;
 export function isAdaptiveLesson(lesson:LearningScript):lesson is AdaptiveLesson{return "version" in lesson&&lesson.version===2}
 export type ScriptIssue={path:string;message:string};
-export class ScriptImportError extends Error {constructor(public issues:ScriptIssue[]){super(issues.map(i=>`${i.path}：${i.message}`).join("\n"));this.name="ScriptImportError";}}
+export class ScriptImportError extends Error {issues:ScriptIssue[];constructor(issues:ScriptIssue[]){super(issues.map(i=>`${i.path}：${i.message}`).join("\n"));this.name="ScriptImportError";this.issues=issues;}}
 function pathLabel(path:(string|number)[]){return path.map((s,i)=>typeof s==="number"?`[${s}]`:`${i?".":""}${s}`).join("")||"整个脚本";}
 export function parseAnyLesson(raw:string):LearningScript{
  if(raw.length>100000)throw new ScriptImportError([{path:"整个脚本",message:"长度超过 100 KB，请缩短内容。"}]);

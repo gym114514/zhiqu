@@ -22,13 +22,36 @@ npm run install:ci
 npm run dev
 ```
 
-默认预览地址为 http://localhost:5173/ 。Windows 若 npm 的启动包装脚本不可用，可直接使用已安装 npm 的 `npm-cli.js` 执行安装；应用本身可以通过 `node scripts/run-framework.mjs dev` 启动。
+```sh
+npm test              # 全部测试（node:test + tsx，无需额外测试框架）
+npm run typecheck     # tsc --noEmit
+npm run lint          # eslint（已排除 dist/ 与平台生成物）
+npm run build         # 产出 dist/（Worker 服务端 + 静态客户端）
+npm run preflight     # 部署前自检：路由是否在包内、有无 edge 非法参数
+npm run check         # 上面五步串联执行
+```
+
+Windows 若 npm 的启动包装脚本不可用，可直接使用已安装 npm 的 `npm-cli.js`；应用本身可以通过 `node scripts/run-framework.mjs dev` 启动。
+
+### 部署前为什么要跑 preflight
+
+`redirect: "error"` 这个取值在 Node 里合法、在 Cloudflare Workers（edge）运行时非法，`fetch` 会在发出请求前抛 `TypeError`，表现为线上 502「AI 服务响应失败」而本地测试全绿。`npm run preflight` 会检查产物里的路由、redirect 取值、3xx 防护、密钥是否泄漏进客户端，并对比源码常量。**改动 AI 相关代码后请先跑它再部署。**
+
+## 部署
+
+产物 `dist/` 是一个标准 Cloudflare Worker（`dist/server/index.js` + `dist/client/` 静态资源），不依赖 D1、KV 或任何 binding，因此可以部署到任何能跑 Worker 的环境，不必绑定在当前平台上。
 
 ```sh
-node --test tests/lesson.test.mjs
-node node_modules/typescript/bin/tsc --noEmit
-node scripts/run-framework.mjs build
+npm run build && npm run preflight   # 先自检
+npx wrangler deploy --config dist/server/wrangler.json   # 需要一次 Cloudflare 账号授权
+npx wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangler/state   # 本地跑生产产物
 ```
+
+`npm start` 等价于上面最后一条，默认 http://127.0.0.1:8787/ 。
+
+构建会清空并重写 `dist/`；若报 `EPERM: dist`，说明有正在运行的生产实例（`npm start`）占着目录，先停掉它。注意 `npm run dev` 的开发服务器不占用 `dist/`。
+
+当前部署在平台侧（Site 标识保存在 `.openai/hosting.json`，后续修改应复用现有 Site）；仓库内没有平台部署脚本，上传需在平台侧发起。
 
 ## 配置自动生成
 
@@ -54,13 +77,18 @@ node scripts/run-framework.mjs build
 
 ## 主要文件
 
-- `app/page.tsx`：探索入口、学习播放器、脚本工坊。
-- `lib/lesson.ts`：旧版脚本协议，保持兼容。
-- `lib/adaptive.ts`：v2活动协议、教学策略和完整提示词示例。
+- `app/page.tsx`：探索入口、学习播放器、脚本工坊、AI 设置入口。
+- `lib/lesson.ts`：旧版脚本协议，保持兼容；同时提供服务端生成用的 JSON Schema 与提示词。
+- `lib/adaptive.ts`：v2 活动协议、教学策略和完整提示词示例。
 - `lib/script.ts`：双版本导入、全量错误报告与修复指令。
+- `lib/ai-connection.ts`：连接配置校验、端点归一化、请求体构造、上游错误映射、重定向防护。
+- `lib/ai-client.ts`：带中转/直连两种路径的请求封装，以及三次调用 + 一次自动修复的生成编排。
 - `app/adaptive-player.tsx`：按脚本活动序列执行不同学习路径。
+- `app/ai-settings.tsx`：网页内 AI 连接设置与“测试连接”。
 - `lib/lessons.ts`：三个示例脚本。
+- `app/api/ai/chat/route.ts`：官方端点的服务端临时转发（白名单，仅 DeepSeek/OpenAI 固定地址）。
 - `app/api/generate/route.ts`：可选的服务端生成工作流。
+- `scripts/preflight.mjs`：部署前自检。
 - `docs/WORKFLOW.md`：产品假设、研究依据、内容边界及验证计划。
 
 Site 标识保存在 `.openai/hosting.json`，后续修改应复用现有 Site。

@@ -11,16 +11,12 @@ export default function AISettings({ open, onOpenChange, connection, remembered,
  open: boolean; onOpenChange: (v: boolean) => void; connection: AIConnection | null; remembered: boolean;
  onSave: (config: AIConnection | null, remember: boolean) => void;
 }) {
- const [draft, setDraft] = useState<AIConnection>(emptyConnection);
- const [remember, setRemember] = useState(false); const [visible, setVisible] = useState(false);
+ // 打开对话框时由父组件用 key 重挂载本组件，因此直接用 props 初始化即可拿到最新配置；
+ // busy/message/tested 等瞬时状态也随挂载重置，无需在 effect 里 setState。
+ const [draft, setDraft] = useState<AIConnection>(() => connection || emptyConnection());
+ const [remember, setRemember] = useState(remembered); const [visible, setVisible] = useState(false);
  const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [tested, setTested] = useState(false);
  const controller = useRef<AbortController | null>(null);
- useEffect(() => {
-  if (open) { setDraft(connection || emptyConnection()); setRemember(remembered); setMessage(""); setTested(false); setVisible(false); }
-  else { controller.current?.abort(); controller.current = null; setBusy(false); setDraft(emptyConnection()); setVisible(false); }
- // Take a fresh snapshot when opening; editing/clearing should keep its own feedback.
- // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [open]);
  useEffect(() => () => controller.current?.abort(), []);
  function change(patch: Partial<AIConnection>) { setDraft(d => ({ ...d, ...patch })); setTested(false); setMessage(""); }
  function provider(value: string) { const p = value as Provider; const { baseUrl, model, jsonMode } = presets[p]; change({ provider: p, baseUrl, model, jsonMode, apiKey: "" }); }
