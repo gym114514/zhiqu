@@ -1,6 +1,8 @@
-# 知趣 · 好奇心学习机
+# zhiqu · 知趣好奇心学习机
 
 面向成年人探索陌生领域的可玩网页原型。通过预测、操作、解释、迁移和自我表达，完成一次短小的科普启蒙体验。
+
+每一节都由一段 JSON 学习脚本驱动，走同一条路：**有意思的具体问题 → 先猜 → 对照或动手 → 简短解释 → 换个新情境用一次 → 用自己的话讲出来**。内置示例可离线试玩；接上自己的 AI 后，任意主题都能现场编排成一段这样的体验。
 
 ## 已实现
 
@@ -75,6 +77,14 @@ npx wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangl
 
 详见 [工作流说明](docs/WORKFLOW.md)。流程借鉴主动回想、好奇心和迁移任务的研究，但未验证本产品对学习效率的提升。不将一次体验完成描述为精通学科。
 
+## 许可证
+
+[AGPL-3.0](LICENSE) © 2026 zhiqu contributors。
+
+你可以自由使用、修改和分发，但**如果你把它改成在线服务提供给他人使用，你也必须以 AGPL-3.0 公开你的完整源码**（第 13 条）。这正是选择这个许可证的原因：避免有人拿它做成闭源的商业服务。
+
+如果公开部署，建议在界面上提供一个指向源码仓库的“源代码”链接，以符合第 13 条的要求。
+
 ## 主要文件
 
 - `app/page.tsx`：探索入口、学习播放器、脚本工坊、AI 设置入口。
@@ -86,6 +96,7 @@ npx wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangl
 - `app/adaptive-player.tsx`：按脚本活动序列执行不同学习路径。
 - `app/ai-settings.tsx`：网页内 AI 连接设置与“测试连接”。
 - `lib/lessons.ts`：三个示例脚本。
+- `samples/liberalism-basics-1.json`：一份可直接导入试玩的学习脚本样例（“什么是自由主义”），用“导入脚本”粘贴即可播放。
 - `app/api/ai/chat/route.ts`：官方端点的服务端临时转发（白名单，仅 DeepSeek/OpenAI 固定地址）。
 - `app/api/generate/route.ts`：可选的服务端生成工作流。
 - `scripts/preflight.mjs`：部署前自检。
