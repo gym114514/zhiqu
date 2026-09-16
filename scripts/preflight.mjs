@@ -134,6 +134,31 @@ check("产物可被 wrangler 独立打包（dry-run）", () => {
   return `可打包，上传体积 ${size}`;
 });
 
+// 9. 首页 HTML 引用的静态资源必须真的存在于磁盘上
+// 起因：重建 dist/ 时若有生产实例在运行，dist/client 会被清空而 HTML 仍引用旧文件名，
+// 结果线上页面没有 CSS/JS，UI 完全错乱（但服务端仍返回 200）。
+check("首页引用的静态资源在磁盘上存在", () => {
+  assert(existsSync(join(root, "dist/server/index.js")), "缺少 dist/server/index.js");
+  const rendered = spawnSync(process.execPath, ["-e", `
+    const { pathToFileURL } = require("node:url");
+    (async () => {
+      const mod = await import(pathToFileURL(${JSON.stringify(join(root, "dist/server/index.js"))}).href);
+      const handler = mod.default ?? mod;
+      const fetcher = typeof handler?.fetch === "function" ? handler.fetch : handler;
+      const response = await fetcher(new Request("http://localhost/"), {});
+      process.stdout.write(await response.text());
+    })().catch((error) => { process.stderr.write(String(error?.stack ?? error)); process.exit(1); });
+  `], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const markup = rendered.stdout ?? "";
+  assert(rendered.status === 0 && markup.length > 0,
+    "无法从产物渲染首页 HTML" + ((rendered.stderr ?? "").split("\n")[0] ? `：${(rendered.stderr ?? "").split("\n")[0]}` : ""));
+  const refs = [...new Set([...markup.matchAll(/(?:href|src)="(\/[^"]+\.(?:css|js))"/g)].map((m) => m[1]))];
+  assert(refs.length > 0, "首页 HTML 未引用任何 css/js 资源（构建可能不完整）");
+  const missing = refs.filter((ref) => !existsSync(join(root, "dist", "client", ref.replace(/^\//, "").split("?")[0])));
+  assert(missing.length === 0, `以下资源被引用但不在 dist/client 中（页面会没有样式/脚本）：${missing.join("、")}`);
+  return `${refs.length} 个引用全部存在`;
+});
+
 const failed = checks.filter((c) => !c.ok);
 for (const c of checks) console.log(`${c.ok ? "✔" : "✖"} ${c.name}${c.detail ? `  — ${c.detail}` : ""}`);
 console.log(`\n部署前自检：${checks.length - failed.length}/${checks.length} 项通过`);
