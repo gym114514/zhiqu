@@ -28,7 +28,7 @@ export async function POST(request:Request){
   const draftText=outputText(draft);
   send({phase:"正在检查事实依据、类比边界和学习任务…"});
   const reviewed=await callModel(key,{model,max_output_tokens:7000,instructions:WORKFLOW+"\n现在担任审校者：根据提供的资料修正草稿。确保学习路径适合知识目标，节点不必遵循固定流程；若有选择题，每个选项都含布尔 correct 字段且每题只有一个 true。概念有分类、方法有逐步示范、证据有材料与不确定判断。删掉资料未支持的主张；对争议明确边界。sources只能用给定来源。返回修正后的完整脚本，不返回审校说明。",input:JSON.stringify({brief,sources,draft:draftText}),text:{format:{type:"json_schema",name:"reviewed_script",strict:true,schema:scriptJsonSchema}}},controller.signal);
-  const candidate=JSON.parse(outputText(reviewed));candidate.sources=sources;const checked=lessonSchema.safeParse(candidate);
+  const candidate=JSON.parse(outputText(reviewed));candidate.sources=sources;candidate.sourceStatus="web_retrieved";const checked=lessonSchema.safeParse(candidate);
   if(!checked.success)throw new Error("这次脚本没有通过完整性检查。请重试，或复制生成指令进行调整。");
   send({lesson:checked.data});
  }catch(e){if(!controller.signal.aborted){const timedOut=(e as Error).name==="TimeoutError";send({error:timedOut?"这次生成用时较长，已停止。请稍后重试，或使用生成指令。":(e as Error).message||"生成中断，请重试。"})}}finally{if(!controller.signal.aborted)channel.close()}},cancel(){controller.abort()}});

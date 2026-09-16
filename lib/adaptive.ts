@@ -17,8 +17,11 @@ export const adaptiveLessonSchema=z.object({
  version:z.literal(2),id:base.id,title:short,category:z.string().min(1).max(30),hook:t,minutes:z.number().int().min(3).max(20),objective:t,
  approach:z.object({type:z.enum(["mechanism","concept","procedure","evidence"]),reason:t}).strict(),
  steps:z.array(node).min(2).max(8),boundary:t,followups:z.array(t).min(1).max(3),
- sources:z.array(z.object({title:t,url:z.string().url().refine(s=>s.startsWith("https://"),"来源必须是 HTTPS 链接")}).strict()).min(1).max(6)
+ sources:z.array(z.object({title:t,url:z.string().url().refine(s=>s.startsWith("https://"),"来源必须是 HTTPS 链接")}).strict()).max(6),
+ sourceStatus:z.enum(["model_knowledge","web_retrieved"]).optional()
 }).strict().superRefine((lesson,ctx)=>{
+ if(!lesson.sources.length&&lesson.sourceStatus!=="model_knowledge")ctx.addIssue({code:"custom",path:["sources"],message:"至少提供一个来源，或明确标注 model_knowledge（未联网核验）"});
+ if(lesson.sourceStatus==="model_knowledge"&&lesson.sources.length)ctx.addIssue({code:"custom",path:["sources"],message:"未联网生成的草稿不应附带未经核对的来源"});
  const ids=new Set<string>();
  lesson.steps.forEach((s,i)=>{
   if(ids.has(s.id))ctx.addIssue({code:"custom",path:["steps",i,"id"],message:"步骤 id 必须唯一"});ids.add(s.id);
