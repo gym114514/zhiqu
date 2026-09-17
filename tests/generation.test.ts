@@ -147,6 +147,52 @@ test("逐段生成时模型用模块 id 当步骤 id，不能因此让整次生�
   assert.ok(finished.plan!.modules.every(m => finished.steps.some(s => s.module === m.id)), "每个模块都有活动");
 });
 
+test("逐段生成：模块缺核心活动时，修复必须作用在这一段上", async () => {
+  const plan = {
+    objective: "辨析单位。",
+    modules: [
+      { id: "concept-mod", title: "先分清两个量", approachType: "concept" as const, purpose: "建立边界。", contributes: "给出判断标准。" },
+      { id: "proc-mod", title: "跟着做一次", approachType: "procedure" as const, purpose: "照步骤做一遍。", contributes: "给出可复用的动作。" }
+    ]
+  };
+  const base = {
+    version: 2, id: "repair-by-segment", title: "t", category: "按需探索", hook: "h", minutes: 9, objective: "o",
+    mainQuestion: "光年到底是时间还是距离？", plan, boundary: "b", followups: ["f"], sources: [], sourceStatus: "model_knowledge"
+  };
+  const classifyOk = { ...base, steps: [{ id: "c1", module: "concept-mod", title: "把两个量分开", type: "classify", instruction: "判断在描述什么。", categories: [{ id: "d", label: "距离" }, { id: "t", label: "时间" }], items: [{ text: "光走一年所过的路程", categoryId: "d", feedback: "是距离。" }, { text: "生日之间的时长", categoryId: "t", feedback: "是时间。" }] }] };
+  const wrongApproach = { ...base, steps: [{ id: "x", module: "concept-mod", title: "只是换个说法", type: "explain", paragraphs: ["声明了概念学法却没有分类活动。"] }] };
+  const workedOk = { ...base, steps: [
+    { id: "p1", module: "proc-mod", title: "看一次示范", type: "worked_example", task: "示范怎么判断。", walkthrough: [{ title: "第一步", detail: "看描述对象。" }, { title: "第二步", detail: "判断是路程还是时长。" }], practicePrompt: "换一句自己判断。", hints: ["先找描述对象。"], rubric: ["说出判断依据"], example: "参考思路。" },
+    { id: "w1", module: "proc-mod", title: "回到最初的问题", type: "synthesis", answer: "光年是距离单位。", conditions: "只在把年理解为光的行程时成立。", openQuestions: ["怎样估出传播时间？"] }
+  ] };
+
+  let calls = 0;
+  const phases: string[] = [];
+  const chat = async (request: { messages: { content: string }[] }) => {
+    calls += 1;
+    const system = request.messages[0].content;
+    if (system.includes("本轮只输出探索计划")) return JSON.stringify({ mainQuestion: base.mainQuestion, objective: base.objective, plan });
+    const repairing = system.includes("上一次的产出没有通过检查");
+    // 只看"本次要生成的模块"，不要被完整计划里的其它模块 id 误导
+    const target = /本次要生成的模块：\{"id":"([a-z-]+)"/.exec(system)?.[1] ?? "?";
+    if (target === "concept-mod") return JSON.stringify(repairing ? classifyOk : wrongApproach);
+    return JSON.stringify(workedOk);
+  };
+
+  const skeleton = await generatePlan(connection, base.mainQuestion, signal(), () => {}, chat as never);
+  const seed = draftFromPlan(skeleton, "repair-by-segment");
+  const first = await generateModule(connection, base.mainQuestion, seed, "concept-mod", signal(), s => phases.push(s), chat as never);
+
+  assert.ok(first.steps.some(s => s.type === "classify"), "第一段必须补上核心活动，而不是把问题留给最后一段");
+  assert.ok(phases.some(p => p.includes("自动修复")), "应给出正在修复的提示");
+  assert.equal(calls, 3, "计划 1 次 + 第一段 1 次 + 该段的修复 1 次");
+
+  const finished = await generateModule(connection, base.mainQuestion, first, "proc-mod", signal(), () => {}, chat as never);
+  assert.equal(finished.draft, undefined, "全部展开后成为成品");
+  assert.equal(finished.steps.at(-1)!.type, "synthesis");
+  assert.doesNotThrow(() => adaptiveLessonSchema.parse(clone(finished)));
+});
+
 test("appendModule 不依赖模型自觉：非最后模块也给了收尾时以原有收尾为准", () => {
   const lesson0 = adaptiveLessonSchema.parse(clone(validExample));
   const incoming = parseModuleReply(moduleReply("correct", "another", true));

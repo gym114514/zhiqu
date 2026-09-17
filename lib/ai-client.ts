@@ -144,6 +144,15 @@ export function draftFromPlan(plan:{mainQuestion:string;objective:string;plan:Ex
  });
 }
 
+/** 每种学法必须自带的核心活动。声明了某种学法却没有对应活动，等于"只换了套标题"。 */
+const CORE_ACTIVITY: Record<string, string | null> = { mechanism: null, concept: "classify", procedure: "worked_example", evidence: "investigate" };
+
+/** 模块产出与它声明的学法不匹配，或缺少收尾——这类问题重问一次就能修，因此单独成类。
+ *  不要用错误文案的子串来判断"可否修复"：文案一改，修复就会静默失效。 */
+export class ModuleShapeError extends Error {
+ constructor(message: string) { super(message); this.name = "ModuleShapeError"; }
+}
+
 /** 按需生成一个模块的活动，并并回已有脚本。 */
 export async function generateModule(connection:AIConnection,topic:string,lesson:AdaptiveLesson,moduleId:string,signal:AbortSignal,onPhase:(s:string)=>void,chat:Chat=requestChat){
  const target=lesson.plan?.modules.find(m=>m.id===moduleId);
@@ -152,11 +161,40 @@ export async function generateModule(connection:AIConnection,topic:string,lesson
  const isLast=missing.length===1&&missing[0]===moduleId;
  onPhase(`正在展开「${target.title}」…`);
  const system=moduleInstruction(JSON.stringify(lesson.plan),JSON.stringify(target),target.contributes,isLast);
- const raw=await chat({connection,messages:[{role:"system",content:system},{role:"user",content:JSON.stringify({topic})}],json:true,maxTokens:6000},signal);
- signal.throwIfAborted();
- const incoming=parseModuleReply(raw);
- if(isLast&&!incoming.steps.some(s=>s.type==="synthesis"))throw new Error("最后一个模块需要给出综合收尾，请重试。");
- return appendModule(lesson,incoming);
+ const ask=async(instructions:string)=>chat({connection,messages:[{role:"system",content:instructions},{role:"user",content:JSON.stringify({topic})}],json:true,maxTokens:6000},signal);
+
+ // 逐段生成同样需要"不合格就修一次"。这里有一个只有分段生成才会遇到的问题：
+ // 第一段缺核心活动时，草稿态校验会正确跳过它；等最后一段展开后整体校验才报错，
+ // 而那时修复只能重生成最后一段，缺活动的那一段已经定型、修不好。
+ // 因此每段都要按自己声明的学法就地自检，让修复作用在正确的那一段上。
+ const requiresCore=(incoming:AdaptiveLesson)=>{
+  const need=CORE_ACTIVITY[target.approachType];
+  if(!need)return true;
+  return incoming.steps.some(s=>s.module===target.id&&s.type===need);
+ };
+ const attempt=async(instructions:string)=>{
+  const raw=await ask(instructions);
+  signal.throwIfAborted();
+  const incoming=parseModuleReply(raw);
+  if(!requiresCore(incoming))throw new ModuleShapeError(`这个模块声明为 ${target.approachType} 学法，必须包含一个 ${CORE_ACTIVITY[target.approachType]} 活动。`);
+  if(isLast&&!incoming.steps.some(s=>s.type==="synthesis"))throw new ModuleShapeError("最后一个模块需要给出综合收尾。");
+  return appendModule(lesson,incoming);
+ };
+ try{
+  return await attempt(system);
+ }catch(e){
+  signal.throwIfAborted();
+  if(e instanceof ModuleShapeError||e instanceof ScriptImportError){
+   const issues=e instanceof ScriptImportError?e.issues:[{path:"steps",message:(e as Error).message}];
+   onPhase(`「${target.title}」的格式不合适，正在自动修复一次…`);
+   return await attempt(system+"\n上一次的产出没有通过检查，请针对下列问题修正后重新输出完整 JSON："
+    +issues.map((i,n)=>`${n+1}. ${i.path}：${i.message}`).join("；")
+    +`\n特别检查：本模块声明为 ${target.approachType}，必须包含与它匹配的核心活动`
+    +(CORE_ACTIVITY[target.approachType]?`（${CORE_ACTIVITY[target.approachType]}）`:"")
+    +"；步骤 id 不得与模块 id 或其它步骤重复；不要把其它模块的学法混进这一段。");
+  }
+  throw e;
+ }
 }
 export async function generateWithConnection(connection: AIConnection, topic: string, signal: AbortSignal, onPhase: (s: string) => void, chat: Chat = requestChat) {
  if (topic.trim().length < 2 || topic.trim().length > 200) throw new Error("请用 2–200 个字符描述想探索的问题。");

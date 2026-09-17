@@ -120,9 +120,12 @@ export const adaptiveLessonSchema=z.object({
  if(lesson.approach&&required&&!lesson.steps.some(s=>s.type===required))ctx.addIssue({code:"custom",path:["steps"],message:`${lesson.approach.type} 路径至少需要一个 ${required} 活动，而不只是换一套标题`});
  // 路径约束按“整节课”检查：模块可以各有侧重（如概念路径的第一个模块建边界、第二个模块做应用），
  // 因此不要求每个模块都自带同类活动，只要求整条线里出现过该活动的核心动作。
- if(lesson.plan){
-  const requiredByPath=[...new Set(lesson.plan.modules.map(m=>m.approachType))];
-  for(const path of requiredByPath){
+ // 但按需生成是逐段展开的：尚未展开的模块此刻没有任何活动，不能因此判定"缺少核心活动"，
+ // 所以只检查已经展开过的模块，且草稿态一律跳过。
+ const expandedModules=new Set(lesson.steps.map(s=>s.module).filter((id):id is string=>typeof id==="string"));
+ if(lesson.plan&&!draft){
+  const declared=[...new Set(lesson.plan.modules.filter(m=>expandedModules.has(m.id)).map(m=>m.approachType))];
+  for(const path of declared){
    const need={concept:"classify",procedure:"worked_example",evidence:"investigate",mechanism:null}[path];
    if(need&&!lesson.steps.some(s=>s.type===need))ctx.addIssue({code:"custom",path:["steps"],message:`这条线包含 ${path} 学法，但通篇缺少核心活动 ${need}`});
   }
