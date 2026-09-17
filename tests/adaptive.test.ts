@@ -6,10 +6,13 @@ import { parseAnyLesson,makeRepairPrompt,makeAdaptivePrompt,ScriptImportError } 
 
 test("accepts legacy scripts and genuinely different adaptive activities",()=>{
  for(const lesson of [...lessons,conceptLesson,evidenceLesson,procedureLesson])assert.equal(parseAnyLesson(JSON.stringify(lesson)).id,lesson.id);
- assert.ok(conceptLesson.steps.some(s=>s.type==="classify"));
  assert.ok(evidenceLesson.steps.some(s=>s.type==="investigate"));
  assert.ok(!evidenceLesson.steps.some(s=>s.type==="choice"));
  assert.ok(procedureLesson.steps.some(s=>s.type==="worked_example"));
+ // 概念路径至少一个 classify 活动：示例课本身就是这条路径的样本
+ const classify=conceptLesson.steps.find(s=>s.type==="classify");
+ assert.ok(classify,"概念路径需要 classify 活动");
+ assert.ok(classify.type==="classify"&&classify.items.length>=2);
 });
 test("reports all eight omitted correct fields without guessing answers",()=>{
  const broken=JSON.parse(JSON.stringify(lessons[0]));

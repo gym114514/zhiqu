@@ -78,7 +78,7 @@ test("workflow repairs omitted correct fields once, without guessing answers loc
  let calls = 0; const phases: string[] = [];
  const chat: typeof requestChat = async request => { calls++; if (calls === 1) return "计划：通过分类辨清概念"; if (calls === 4) { assert.match(request.messages[1].content, /correct/); return JSON.stringify(validExample); } return JSON.stringify(broken); };
  const result = await generateWithConnection(config, "认识光年", signal(), s => phases.push(s), chat);
- assert.equal(calls, 4); assert.equal(result.approach.type, "concept"); assert.equal(result.sourceStatus, "model_knowledge"); assert.match(phases.at(-1)!, /自动修复/);
+ assert.equal(calls, 4); assert.equal(result.plan?.modules.length, 2); assert.equal(result.mainQuestion?.includes("神经网络"), true); assert.equal(result.sourceStatus, "model_knowledge"); assert.match(phases.at(-1)!, /自动修复/);
  calls = 0;
  await assert.rejects(generateWithConnection(config, "认识光年", signal(), () => {}, async () => { calls++; return calls === 1 ? "计划" : JSON.stringify(broken); }), /自动修复后/);
  assert.equal(calls, 4);
