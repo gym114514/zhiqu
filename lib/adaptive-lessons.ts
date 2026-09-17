@@ -1,4 +1,4 @@
-import { validExample,type AdaptiveLesson } from "./adaptive";
+import type { AdaptiveLesson } from "./adaptive";
 const archiveSource={title:"美国国家档案馆 · Analyze a Written Document",url:"https://www.archives.gov/education/lessons/worksheets/analyze-a-written-document-intermediate"};
 export const conceptLesson:AdaptiveLesson={version:2,id:"concept-light-year",title:"光年到底是时间，还是距离？",category:"概念辨析",hook:"名字里有“年”，却不能用来描述生日之间的时间。",minutes:5,
  objective:"根据一句话描述的是路程还是时长，判断它是不是在说光年。",

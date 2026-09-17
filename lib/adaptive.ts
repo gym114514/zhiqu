@@ -134,7 +134,6 @@ export function approachLabel(lesson:AdaptiveLesson){
  return types.length?types.map(t=>approachLabels[t]).join(" · "):"探索路径";
 }
 const str={type:"string"};const obj=(properties:Record<string,unknown>)=>({type:"object",properties,required:Object.keys(properties),additionalProperties:false});const arr=(items:unknown)=>({type:"array",items});
-const nodeSchema=(type:string,props:Record<string,unknown>)=>obj({id:str,title:str,type:{type:"string",enum:[type]},...props});
 // body 只允许六种主线活动；补给嵌套只再展开一层（最多两层）。
 const bodyNodeSchema=obj({id:str,title:str,type:{type:"string",enum:["explain","choice","cards","classify","worked_example","investigate","reflect"]},paragraphs:arr(str),question:str,options:arr(obj({label:str,correct:{type:"boolean"},feedback:str})),hint:str,instruction:str,cards:arr(obj({title:str,text:str,reveal:str})),categories:arr(obj({id:str,label:str})),items:arr(obj({text:str,categoryId:str,feedback:str})),task:str,walkthrough:arr(obj({title:str,detail:str})),practicePrompt:str,hints:arr(str),rubric:arr(str),example:str,context:str,materials:arr(obj({title:str,text:str,context:str})),claims:arr(obj({text:str,verdict:{type:"string",enum:["supported","contradicted","uncertain"]},feedback:str})),reflectionPrompt:str,prompt:str});
 const supplyBaseSchema=obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip"]},helpsWith:str,backLabel:str});
