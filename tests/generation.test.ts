@@ -108,6 +108,45 @@ test("草稿骨架：由计划搭出可继续展开的起点，逐个展开后�
   assert.ok(second.plan!.modules.every(m => second.steps.some(s => s.module === m.id)), "每个模块都有活动");
 });
 
+test("逐段生成时模型用模块 id 当步骤 id，不能因此让整次生成失败", async () => {
+  const plan = {
+    objective: "说清这个循环。",
+    modules: [
+      { id: "judge", title: "机器怎样做出一次判断", approachType: "mechanism" as const, purpose: "看懂一次判断。", contributes: "它给出被调整的对象。" },
+      { id: "correct", title: "怎样发现并减小偏差", approachType: "mechanism" as const, purpose: "看懂调整方向。", contributes: "它解释参数为什么被改动。" }
+    ]
+  };
+  const base = {
+    version: 2, id: "dup-id-demo", title: "t", category: "按需探索", hook: "h", minutes: 9, objective: "o",
+    mainQuestion: "神经网络为什么能从例子中学会分类？", plan, boundary: "b", followups: ["f"], sources: [], sourceStatus: "model_knowledge"
+  };
+  let calls = 0;
+  const chat = async (request: { messages: { content: string }[] }) => {
+    calls += 1;
+    if (request.messages[0].content.includes("本轮只输出探索计划")) {
+      return JSON.stringify({ mainQuestion: base.mainQuestion, objective: base.objective, plan });
+    }
+    const firstModule = calls === 2;
+    // 两段都拿模块 id 当步骤 id，第二段内部还重复一次——这是模型很自然的写法
+    return JSON.stringify({ ...base, steps: firstModule
+      ? [{ id: "judge", module: "judge", title: "先看一次判断", type: "explain", paragraphs: ["一段解释。"] }]
+      : [{ id: "correct", module: "correct", title: "偏差怎么变成方向", type: "explain", paragraphs: ["另一段解释。"] },
+         { id: "correct", module: "correct", title: "回到最初的问题", type: "synthesis", answer: "因为它把猜错多少变成了修改参数的依据。", conditions: "只适用于有大量标注例子的监督分类。", openQuestions: ["数据有偏时会把偏差学进去吗？"] }] });
+  };
+
+  const skeleton = await generatePlan(connection, base.mainQuestion, signal(), () => {}, chat as never);
+  const seed = draftFromPlan(skeleton, "dup-id-demo");
+  const afterFirst = appendModule(seed, await generateModule(connection, skeleton.mainQuestion, seed, "judge", signal(), () => {}, chat as never));
+  assert.equal(afterFirst.draft, true, "还有模块没展开时保持草稿态");
+  const finished = appendModule(afterFirst, await generateModule(connection, skeleton.mainQuestion, afterFirst, "correct", signal(), () => {}, chat as never));
+
+  const ids = finished.steps.map(s => s.id);
+  assert.equal(new Set(ids).size, ids.length, "合并后步骤 id 必须全局唯一");
+  assert.equal(finished.draft, undefined, "全部展开后应成为成品");
+  assert.equal(finished.steps.at(-1)!.type, "synthesis", "收尾在最后");
+  assert.ok(finished.plan!.modules.every(m => finished.steps.some(s => s.module === m.id)), "每个模块都有活动");
+});
+
 test("appendModule 不依赖模型自觉：非最后模块也给了收尾时以原有收尾为准", () => {
   const lesson0 = adaptiveLessonSchema.parse(clone(validExample));
   const incoming = parseModuleReply(moduleReply("correct", "another", true));

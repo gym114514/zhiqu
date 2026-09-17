@@ -50,6 +50,19 @@ export function parseModelLesson(raw: string): AdaptiveLesson {
  if (!isAdaptiveLesson(lesson)) throw new Error("请返回 version:2 的动态学习脚本。");
  return lesson;
 }
+/** 逐段生成时，模型很自然地用模块 id 当步骤 id（同一段里也会重复）。
+ *  各段是独立生成的，无法要求模型保证全局唯一，因此统一在解析前去掉重复 id。 */
+export function dedupeStepIds<T>(steps: T[]): T[] {
+ const seen = new Set<string>();
+ return steps.map(step => {
+  const s = step as { id?: unknown };
+  if (typeof s.id !== "string") return step;
+  let id = s.id, n = 2;
+  while (seen.has(id)) id = `${s.id}-${n++}`;
+  seen.add(id);
+  return id === s.id ? step : { ...(step as object), id } as T;
+ });
+}
 /** 解析"只展开一个模块"的回复：此时其他模块还没有活动，因此按草稿态校验。 */
 export function parseModuleReply(raw: string): AdaptiveLesson {
  let value;
@@ -57,6 +70,7 @@ export function parseModuleReply(raw: string): AdaptiveLesson {
  catch { throw new Error("模块内容不是完整 JSON，请重试。"); }
  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("模块内容必须是 JSON 对象。");
  value.sources = []; value.sourceStatus = "model_knowledge"; value.draft = true;
+ if (Array.isArray(value.steps)) value.steps = dedupeStepIds(value.steps);
  const lesson = parseAnyLesson(JSON.stringify(value));
  if (!isAdaptiveLesson(lesson)) throw new Error("请返回 version:2 的动态学习脚本。");
  return lesson;
@@ -91,8 +105,11 @@ export function appendModule(lesson:AdaptiveLesson,incoming:AdaptiveLesson):Adap
  const last=lesson.steps.find(s=>s.type==="synthesis")??incoming.steps.filter(s=>s.type==="synthesis").at(-1);
  // 占位活动（骨架里那条）在新模块到来后就没有意义了。
  const kept=[...main.filter(s=>s.id!=="pending"),...incoming.steps.filter(s=>s.type!=="synthesis"),...(last?[last]:[])];
- const stillPending=(lesson.plan?.modules??[]).some(m=>!kept.some(s=>s.module===m.id));
- const merged={...lesson,steps:kept} as AdaptiveLesson;
+ // 模型很自然地用模块 id 当步骤 id，逐段生成时同一个 id 会重复出现。
+ // 各段是独立生成的，无法要求模型全局唯一，因此这里再去重一次（跨段冲突）。
+ const steps=dedupeStepIds(kept);
+ const stillPending=(lesson.plan?.modules??[]).some(m=>!steps.some(s=>s.module===m.id));
+ const merged={...lesson,steps} as AdaptiveLesson;
  const result=stillPending?draftOf(merged):complete(merged);
  return adaptiveLessonSchema.parse(JSON.parse(JSON.stringify(result)));
 }
