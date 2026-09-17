@@ -1,11 +1,21 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
-import hostingConfig from "./.openai/hosting.json";
+import { readFileSync } from "node:fs";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
+
+// .openai/hosting.json 是托管平台生成的站点清单（项目 ID，以及可选的 D1/R2 绑定名）。
+// 它属于平台元数据而非应用配置：缺失时用空配置继续，因此克隆本仓库后无需该文件也能构建。
+const hostingConfig: { d1?: string | null; r2?: string | null } = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("./.openai/hosting.json", import.meta.url), "utf8"));
+  } catch {
+    return { d1: null, r2: null };
+  }
+})();
 
 const { d1, r2 } = hostingConfig;
 

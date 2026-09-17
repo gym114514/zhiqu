@@ -6,8 +6,8 @@
 
 ## 已实现
 
-- 五个可玩入口：星光与时间、概率直觉、历史证据、概念分类、方法示范。
-- 光程滑块、独立抛硬币模拟、虚构史料对照卡。
+- 五个可玩入口：星光与时间、概率直觉、史料对照（固定六步流程），以及光年概念辨析、历史结论调查（自适应路径，各有不同的学法与活动）。
+- 光程滑块、独立抛硬币模拟、虚构史料对照卡；v2 路径另有分类、示范、材料核查等活动。
 - 针对选项的反馈、可选提示、新情境任务、自由表达与自查。
 - 兼容 v1/v2 JSON 学习脚本；全量错误诊断、修复指令、导入、播放与导出。
 - 用户可配置 DeepSeek、OpenAI 或自定义兼容 API，测试连接后直接生成。
@@ -95,11 +95,12 @@ npx wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangl
 - `lib/ai-client.ts`：带中转/直连两种路径的请求封装，以及三次调用 + 一次自动修复的生成编排。
 - `app/adaptive-player.tsx`：按脚本活动序列执行不同学习路径。
 - `app/ai-settings.tsx`：网页内 AI 连接设置与“测试连接”。
-- `lib/lessons.ts`：三个示例脚本。
+- `lib/lessons.ts`：三个旧版（v1）脚本，其中两个仍在首页目录中使用（光程、抛硬币）。
+- `lib/adaptive-lessons.ts`：三个 v2 自适应示例（概念辨析、史料核查、调查方法）。
 - `samples/liberalism-basics-1.json`：一份可直接导入试玩的学习脚本样例（“什么是自由主义”），用“导入脚本”粘贴即可播放。
 - `app/api/ai/chat/route.ts`：官方端点的服务端临时转发（白名单，仅 DeepSeek/OpenAI 固定地址）。
 - `app/api/generate/route.ts`：可选的服务端生成工作流。
 - `scripts/preflight.mjs`：部署前自检。
 - `docs/WORKFLOW.md`：产品假设、研究依据、内容边界及验证计划。
 
-Site 标识保存在 `.openai/hosting.json`，后续修改应复用现有 Site。
+Site 标识保存在 `.openai/hosting.json`（托管平台生成的站点清单，含 `project_id` 与可选的 D1/R2 绑定名），后续修改应复用现有 Site。该文件是可选的：`vite.config.ts` 在它缺失时回退为空配置，因此**克隆本仓库后直接 `npm run install:ci && npm run dev` 即可运行**；只有需要重新部署到原托管平台时才用得上它。

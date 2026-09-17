@@ -180,7 +180,10 @@ export function sites({ mockAuth = true } = {}): Plugin {
       await rm(outputDirectory, { recursive: true, force: true });
       await mkdir(outputDirectory, { recursive: true });
 
-      await cp(hostingConfig, resolve(outputDirectory, "hosting.json"));
+      // 平台清单是可选的：只有它存在时才随产物一起带上，便于脱离平台独立构建。
+      if (await exists(hostingConfig)) {
+        await cp(hostingConfig, resolve(outputDirectory, "hosting.json"));
+      }
       if (await exists(drizzleSource)) {
         await cp(drizzleSource, resolve(outputDirectory, "drizzle"), {
           recursive: true,
