@@ -1,4 +1,4 @@
-import { ADAPTIVE_WORKFLOW, adaptiveJsonSchema, adaptiveLessonSchema, complete, draftOf, explorationPlan, validExample, type AdaptiveLesson } from "./adaptive";
+import { ADAPTIVE_WORKFLOW, adaptiveJsonSchema, adaptiveLessonSchema, complete, draftOf, explorationPlan, validExample, type AdaptiveLesson, type ExplorationPlan } from "./adaptive";
 import { parseAnyLesson, isAdaptiveLesson, ScriptImportError } from "./script";
 import { assertUpstreamResponse, canRelay, chatBody, chatText, completionUrl, limitedText, REDIRECT_MODE, statusError, validateConnection, type AIConnection, type ChatRequest } from "./ai-connection";
 
@@ -83,13 +83,18 @@ function moduleInstruction(planJson:string,moduleJson:string,purpose:string,isLa
   +'mainQuestion 必须是计划里的原问题；plan 必须原样保留；sources 为空数组。';
 }
 
-/** 把新模块的活动与收尾并回已有脚本：原有收尾优先，收尾唯一且永远在最后。 */
+/** 把新模块的活动与收尾并回已有脚本：原有收尾优先，收尾唯一且永远在最后。
+ *  只有全部模块都展开之后才摘掉草稿标记，此前保持草稿态（否则"还没展开的模块"会被成品规则拒绝）。 */
 export function appendModule(lesson:AdaptiveLesson,incoming:AdaptiveLesson):AdaptiveLesson{
  const main=lesson.steps.filter(s=>s.type!=="synthesis");
  // 原有收尾优先：模型在中间模块擅自给出收尾时，不能顶掉真正的收尾。
  const last=lesson.steps.find(s=>s.type==="synthesis")??incoming.steps.filter(s=>s.type==="synthesis").at(-1);
- const merged=complete({...draftOf(lesson),steps:[...main,...incoming.steps.filter(s=>s.type!=="synthesis"),...(last?[last]:[])]} as AdaptiveLesson);
- return adaptiveLessonSchema.parse(JSON.parse(JSON.stringify(merged)));
+ // 占位活动（骨架里那条）在新模块到来后就没有意义了。
+ const kept=[...main.filter(s=>s.id!=="pending"),...incoming.steps.filter(s=>s.type!=="synthesis"),...(last?[last]:[])];
+ const stillPending=(lesson.plan?.modules??[]).some(m=>!kept.some(s=>s.module===m.id));
+ const merged={...lesson,steps:kept} as AdaptiveLesson;
+ const result=stillPending?draftOf(merged):complete(merged);
+ return adaptiveLessonSchema.parse(JSON.parse(JSON.stringify(result)));
 }
 
 /** 计划阶段：只产出导航骨架，因此校验只用计划自身的规则，不要求活动齐全。 */
@@ -102,8 +107,24 @@ export async function generatePlan(connection:AIConnection,topic:string,signal:A
  try{value=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,""));}
  catch{throw new Error("计划不是完整的 JSON。请重试，或改用生成指令。");}
  const skeleton=(value??{}) as {mainQuestion?:unknown;objective?:unknown;plan?:unknown};
- try{return explorationPlan.parse({objective:skeleton.objective,modules:(skeleton.plan as {modules?:unknown})?.modules});}
+ const mainQuestion=typeof skeleton.mainQuestion==="string"&&skeleton.mainQuestion.trim().length>=4?skeleton.mainQuestion.trim():topic.trim();
+ const objective=typeof skeleton.objective==="string"&&skeleton.objective.trim()?skeleton.objective.trim():`把「${topic.trim()}」弄明白。`;
+ const modules=(skeleton.plan as {modules?:unknown})?.modules;
+ try{return {mainQuestion,objective,plan:explorationPlan.parse({objective,modules})};}
  catch{throw new Error("计划缺少必要的模块信息，请重试或缩小主题。");}
+}
+
+/** 由计划搭出草稿骨架：此时还没有任何活动，只有原问题与路径。
+ *  逐个模块展开（generateModule + appendModule）之后才是可播放的成品。 */
+export function draftFromPlan(plan:{mainQuestion:string;objective:string;plan:ExplorationPlan},id:string):AdaptiveLesson{
+ return adaptiveLessonSchema.parse({
+  version:2,id,title:plan.mainQuestion,category:"按需探索",hook:plan.objective,minutes:9,objective:plan.objective,
+  mainQuestion:plan.mainQuestion,plan:plan.plan,
+  // 骨架先放一个占位活动，等第一个模块展开后会被真正的内容替换掉。
+  steps:[{id:"pending",title:"正在准备第一个模块",type:"explain",paragraphs:["正在为你展开第一段内容。"],module:plan.plan.modules[0].id}],
+  boundary:"本段探索尚未全部展开；未展开的模块会在你走到它时才生成。",
+  followups:["这条路径里哪一段你最想先看？"],sources:[],sourceStatus:"model_knowledge",draft:true
+ });
 }
 
 /** 按需生成一个模块的活动，并并回已有脚本。 */

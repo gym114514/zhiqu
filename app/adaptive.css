@@ -36,6 +36,14 @@
 .supply-chip:disabled{opacity:.45;cursor:not-allowed;border-style:dotted}
 .supply-chip:disabled:hover{background:#22342c}
 .stuck-entries>.text-button{font-size:13px;padding:2px 0}
+/* 按需展开：走到尚未生成的模块时给出的入口 */
+.expand-card{border:1px solid #55705a;border-radius:12px;background:#20302c;padding:22px}
+.expand-card h3{font-size:20px;line-height:1.6;color:#e6f4cc;margin:9px 0 12px}
+.expand-card>.muted{font-size:14px;line-height:1.8;margin-bottom:6px}
+.expand-card>.stage-actions{margin-top:14px}
+.expand-card>.small-label:last-child{margin-top:11px;color:#93a893}
+.plan-first{margin:14px 0 10px}
+.plan-first span{font-size:14px;color:#cfdcbe}
 .supply-list{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
 .supply-zone>.supply-list{margin:0}
 .supply-chip{border:1px dashed #61806a;background:#22342c;color:#dcf0b8;border-radius:8px;padding:9px 13px;font-size:14px;line-height:1.6;text-align:left}

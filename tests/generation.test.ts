@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validExample, adaptiveLessonSchema, complete, draftOf, type AdaptiveLesson } from "../lib/adaptive";
-import { appendModule, generatePlan, generateModule, parseModuleReply } from "../lib/ai-client";
+import { appendModule, draftFromPlan, generatePlan, generateModule, parseModuleReply } from "../lib/ai-client";
 import { emptyConnection } from "../lib/ai-connection";
 
 const connection = { ...emptyConnection(), apiKey: "test-secret-not-real" };
@@ -40,7 +40,8 @@ test("按需生成：先生成计划，再按模块展开，收尾始终留在�
   };
 
   const plan = await generatePlan(connection, "神经网络为什么能从例子中学会分类？", signal(), s => phases.push(s), chat as never);
-  assert.equal(plan.modules.length, 2, "计划应带回两个模块");
+  assert.equal(plan.plan.modules.length, 2, "计划应带回两个模块");
+  assert.ok(plan.mainQuestion.includes("神经网络"), "计划必须保留用户最初的问题");
   assert.ok(phases.some(p => p.includes("先决定要回答什么")), "应先说明在定计划");
 
   const grew = await generateModule(connection, "神经网络为什么能从例子中学会分类？", lesson0, "correct", signal(), s => phases.push(s), chat as never);
@@ -84,6 +85,27 @@ test("草稿态只服务于生成过程：成品脚本不允许留着未展开�
   const finished = complete(asDraft);
   assert.equal(finished.draft, undefined);
   assert.throws(() => adaptiveLessonSchema.parse(clone(finished)), /没有任何步骤/, "去掉草稿标记后仍应受成品规则约束");
+});
+
+test("草稿骨架：由计划搭出可继续展开的起点，逐个展开后成为可播放成品", () => {
+  const lesson0 = adaptiveLessonSchema.parse(clone(validExample));
+  const plan = { mainQuestion: lesson0.mainQuestion!, objective: lesson0.objective, plan: lesson0.plan! };
+  const draft = draftFromPlan(plan, "on-demand-demo");
+  assert.equal(draft.draft, true, "骨架必须是草稿态，否则空模块会被成品规则拒绝");
+  assert.equal(draft.mainQuestion, plan.mainQuestion, "骨架必须保留原问题");
+  assert.equal(draft.plan?.modules.length, 2);
+  assert.doesNotThrow(() => adaptiveLessonSchema.parse(clone(draft)));
+
+  // 逐个模块展开：第一次替换掉占位活动，第二次补上收尾
+  const first = appendModule(draft, parseModuleReply(moduleReply("judge", "first-real", false)));
+  assert.ok(first.steps.some(s => s.id === "first-real"), "第一个模块的活动应替换占位活动");
+  assert.ok(!first.steps.some(s => s.id === "pending"), "占位活动应被移除");
+  assert.equal(first.draft, true, "还有模块没展开时保持草稿态");
+  const second = appendModule(first, parseModuleReply(moduleReply("correct", "second-real", true)));
+  assert.equal(second.draft, undefined, "全部模块展开后才成为成品");
+  assert.equal(second.steps.filter(s => s.type === "synthesis").length, 1, "收尾唯一");
+  assert.equal(second.steps.at(-1)!.type, "synthesis", "收尾在最后");
+  assert.ok(second.plan!.modules.every(m => second.steps.some(s => s.module === m.id)), "每个模块都有活动");
 });
 
 test("appendModule 不依赖模型自觉：非最后模块也给了收尾时以原有收尾为准", () => {

@@ -64,13 +64,16 @@ export const adaptiveLessonSchema=z.object({
  approach:z.object({type:z.enum(["mechanism","concept","procedure","evidence"]),reason:t}).strict().optional(),
  mainQuestion:t.optional(),
  plan:explorationPlan.optional(),
- steps:z.array(stepNode).min(2).max(8),boundary:t,followups:z.array(t).min(1).max(3),
+ // 草稿态（按需生成的骨架）可以只有一个占位活动；成品脚本至少要两步。
+ steps:z.array(stepNode).min(1).max(8),boundary:t,followups:z.array(t).min(1).max(3),
  sources:z.array(z.object({title:t,url:z.string().url().refine(s=>s.startsWith("https://"),"来源必须是 HTTPS 链接")}).strict()).max(6),
  sourceStatus:z.enum(["model_knowledge","web_retrieved"]).optional(),
  // 按需生成中的中间态：计划已定、部分模块尚未展开。只用于生成过程中的合并，播放前必须去掉。
  draft:z.literal(true).optional()
 }).strict().superRefine((lesson,ctx)=>{
  const draft=lesson.draft===true;
+ // 两步下限只对成品生效：按需生成的骨架此刻只有一个占位活动。
+ if(!draft&&lesson.steps.length<2)ctx.addIssue({code:"custom",path:["steps"],message:"完整脚本至少需要两个活动"});
  if(!lesson.sources.length&&lesson.sourceStatus!=="model_knowledge")ctx.addIssue({code:"custom",path:["sources"],message:"至少提供一个来源，或明确标注 model_knowledge（未联网核验）"});
  if(lesson.sourceStatus==="model_knowledge"&&lesson.sources.length)ctx.addIssue({code:"custom",path:["sources"],message:"未联网生成的草稿不应附带未经核对的来源"});
  if(!lesson.approach&&!lesson.plan)ctx.addIssue({code:"custom",path:["approach"],message:"需要 approach（单模块路径）或 plan（多模块导航）之一"});

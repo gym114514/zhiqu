@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, Download, Lightbulb, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, Download, Lightbulb, LoaderCircle, Plus, Sparkles } from "lucide-react";
 import { Dialog,DialogContent,DialogTitle,DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup,RadioGroupItem } from "@/components/ui/radio-group";
@@ -97,14 +97,37 @@ function StuckEntries({items,onOpenKind,onOpenAll}:{items:Supply[];onOpenKind:(k
  </div>;
 }
 
-export default function AdaptivePlayer({lesson,origin,onExit,onCustom}:{lesson:AdaptiveLesson;origin:"sample"|"ai"|"import";onExit:()=>void;onCustom:(t:string)=>void}){
+/** 按需展开卡片：计划里有这个模块，但活动还没生成。
+ *  只有走自己的 AI 连接时才会出现（onExpand 由页面传入）。 */
+function ExpandCard({title,contributes,purpose,busy,error,onExpand}:{title:string;contributes:string;purpose:string;busy:boolean;error:string;onExpand:()=>void}){
+ return <div className="expand-card">
+  <span className="eyebrow">这一段还没有展开</span>
+  <h3>{title}</h3>
+  <p className="small-label">它给最终回答提供的：{contributes}</p>
+  {purpose&&<p className="muted">{purpose}</p>}
+  {error&&<p className="form-message" role="status">{error}</p>}
+  <div className="stage-actions">
+   <button className="primary" disabled={busy} onClick={onExpand}>
+    {busy?<LoaderCircle size={17} className="spin"/>:<Sparkles size={17}/>}{busy?"正在展开这一段的说法…":"展开这一段，继续往下走"}
+   </button>
+  </div>
+  <p className="small-label">按需生成：只为真正要走到的段落调用一次，不必一次生成所有分支。</p>
+ </div>;
+}
+
+export default function AdaptivePlayer({lesson,origin,onExit,onCustom,onExpandModule,onLessonChange}:{lesson:AdaptiveLesson;origin:"sample"|"ai"|"import";onExit:()=>void;onCustom:(t:string)=>void;onExpandModule?:(moduleId:string)=>Promise<AdaptiveLesson|void>;onLessonChange?:(lesson:AdaptiveLesson)=>void}){
  const [index,setIndex]=useState(0);const [notes,setNotes]=useState<Record<string,string>>({});const [sources,setSources]=useState(false);
  const [openSupply,setOpenSupply]=useState<{index:number;path:string[]}|null>(null);
+ const [expandBusy,setExpandBusy]=useState(false);const [expandError,setExpandError]=useState("");
  const heading=useRef<HTMLHeadingElement>(null);const done=index>=lesson.steps.length;const step=lesson.steps[index];
  const supplyItems=step&&"supply" in step?(step.supply??[]):[];
  const currentModule=lesson.plan?.modules.find(m=>m.id===step?.module);
  // 补给只在"当前这一步"有效：记住它属于哪一步，换步后自然收起，无需在 effect 里重置状态。
  const supplyPath=openSupply?.index===index?openSupply.path:[];
+ // 尚未展开的模块：计划里有、但还没有任何活动。走到它时先给出展开入口。
+ const pendingModule=lesson.plan?.modules.find(m=>!lesson.steps.some(s=>s.module===m.id));
+ const showingExpand=!!pendingModule&&!!onExpandModule;
+ const expand=async()=>{if(!pendingModule||!onExpandModule||expandBusy)return;setExpandBusy(true);setExpandError("");try{const next=await onExpandModule(pendingModule.id);if(next)onLessonChange?.(next)}catch(e){setExpandError((e as Error).message||"展开失败，请重试。")}finally{setExpandBusy(false)}};
  useEffect(()=>{heading.current?.focus();window.scrollTo({top:0,behavior:"instant"})},[index]);
  const exportScript=()=>{const u=URL.createObjectURL(new Blob([JSON.stringify(lesson,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=u;a.download=lesson.id+".json";a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
  return <main className="player-shell"><div className="player-top"><button className="text-button" onClick={onExit}><ArrowLeft size={17}/>返回探索</button><span>{approachLabel(lesson)} · 约 {lesson.minutes} 分钟</span><button className="text-button" onClick={()=>setSources(true)}><BookOpen size={16}/>资料与边界</button></div>
@@ -129,13 +152,13 @@ export default function AdaptivePlayer({lesson,origin,onExit,onCustom}:{lesson:A
   <span className="origin-label">{lesson.sourceStatus==="model_knowledge"?"AI 知识草稿 · 未联网核验":origin==="sample"?"示例探索 · 差异化学习路径":origin==="ai"?"AI 编排 · 请核对资料":"导入探索 · 内容与来源待核对"}</span>
  </aside>
  <section className="stage-panel">
-  <div className="stage-top"><span>{done?"EXPLORATION COMPLETE":nodeLabels[step.type]}</span><span>{done?"":`${Math.min(index+1,lesson.steps.length)} / ${lesson.steps.length} 个活动${lesson.plan?` · ${lesson.plan.modules.length} 个模块`:""}`}</span></div>
+   <div className="stage-top"><span>{showingExpand?"等待展开":done?"EXPLORATION COMPLETE":nodeLabels[step.type]}</span><span>{done?"":`${Math.min(index+1,lesson.steps.length)} / ${lesson.steps.length} 个活动${lesson.plan?` · ${lesson.plan.modules.length} 个模块`:""}`}</span></div>
   <Progress aria-label="探索进度" value={index/lesson.steps.length*100} className="journey-progress"/>
-  <h2 className="stage-title" ref={heading} tabIndex={-1}>{done?"给好奇心，留一点余地。":step.title}</h2>
-  {!done&&currentModule&&<p className="module-context"><span className="small-label">当前模块 · {currentModule.title}</span>{currentModule.purpose}</p>}
+   <h2 className="stage-title" ref={heading} tabIndex={-1}>{showingExpand?pendingModule!.title:done?"给好奇心，留一点余地。":step.title}</h2>
+  {!done&&!showingExpand&&currentModule&&<p className="module-context"><span className="small-label">当前模块 · {currentModule.title}</span>{currentModule.purpose}</p>}
   {index===0&&lesson.sourceStatus==="model_knowledge"&&<p className="source-unverified">这段探索基于模型知识生成，未联网核验；遇到关键事实，请继续查证。</p>}
   {index===0&&!lesson.plan&&<details className="path-reason"><summary>这次为什么采用“{approachLabel(lesson)}”？</summary><p>{lesson.approach?.reason}</p></details>}
-  {!done?(step.type==="synthesis"
+   {showingExpand?<ExpandCard title={pendingModule!.title} contributes={pendingModule!.contributes} purpose={pendingModule!.purpose} busy={expandBusy} error={expandError} onExpand={expand}/>:!done?(step.type==="synthesis"
    ?<Synthesis node={step} mainQuestion={lesson.mainQuestion??lesson.title} note={notes[step.id]||""} onNote={s=>setNotes(n=>({...n,[step.id]:s}))} onNext={()=>setIndex(i=>i+1)}/>
    :<>
     <Activity key={step.id} node={step} onNext={()=>setIndex(i=>i+1)} note={notes[step.id]||""} onNote={s=>setNotes(n=>({...n,[step.id]:s}))}/>
