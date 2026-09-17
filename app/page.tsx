@@ -7,7 +7,6 @@ import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { complete, draftOf, type AdaptiveLesson } from "@/lib/adaptive";
 import { lessons } from "@/lib/lessons";
 import { type Lesson } from "@/lib/lesson";
 import { makeAdaptivePrompt, makeRepairPrompt, parseAnyLesson, isAdaptiveLesson, ScriptImportError, type LearningScript } from "@/lib/script";
@@ -69,9 +68,13 @@ function Workshop({open,onOpenChange,initialTopic,onPlay,connection,onSettings}:
 }
 
 export default function Home(){
- // 初次渲染时同步读取一次本地保存的连接配置；用惰性初始化代替 effect 里的 setState。
- const [stored] = useState(() => { try { const saved = readConnection(window.localStorage); return { connection: saved, remembered: !!saved }; } catch { return { connection: null, remembered: false }; } });
- const [episode,setEpisode]=useState<Episode|null>(null);const [runId,setRunId]=useState(0);const [workshop,setWorkshop]=useState(false);const [topic,setTopic]=useState("");const [method,setMethod]=useState(false);const [settings,setSettings]=useState(false);const [connection,setConnection]=useState<AIConnection|null>(stored.connection);const [remembered,setRemembered]=useState(stored.remembered);
+ // 保存的连接只存在于浏览器 localStorage，服务端渲染时读不到。
+ // 因此首屏一律以"没有连接"渲染，等挂载后再读取——这样服务端与客户端的首次渲染一致，
+ // 不会出现水合不匹配（界面会立刻补上已保存的连接）。
+ // 这里必须在 effect 里 setState：惰性初始化会在服务端也执行，两边结果不同，反而破坏水合。
+ const [episode,setEpisode]=useState<Episode|null>(null);const [runId,setRunId]=useState(0);const [workshop,setWorkshop]=useState(false);const [topic,setTopic]=useState("");const [method,setMethod]=useState(false);const [settings,setSettings]=useState(false);const [connection,setConnection]=useState<AIConnection|null>(null);const [remembered,setRemembered]=useState(false);
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- 首屏必须与 SSR 一致，只能在挂载后补读本地配置
+ useEffect(()=>{try{const saved=readConnection(window.localStorage);if(saved){setConnection(saved);setRemembered(true)}}catch{}},[]);
  const episodeRef=useRef<Episode|null>(null);
  // 按需展开：学习者真正走到那一段时才为它调用一次模型。
  const expand=useCallback(async(moduleId:string)=>{

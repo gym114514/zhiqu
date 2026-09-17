@@ -77,6 +77,12 @@ npx wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangl
 
 详见 [工作流说明](docs/WORKFLOW.md)。流程借鉴主动回想、好奇心和迁移任务的研究，但未验证本产品对学习效率的提升。不将一次体验完成描述为精通学科。
 
+### 一个必须遵守的渲染约束
+
+`localStorage` 只能在 `useEffect` 里读，**不能放进 `useState` 的初始化函数**。初始化函数在服务端渲染时也会执行，那里读不到 localStorage，于是服务端与客户端首帧不一致，直接触发水合失败（表现为整棵组件树被客户端重建、报“Hydration failed”）。
+
+正确写法是首屏一律按“没有本地配置”渲染，挂载后再补读：`app/page.tsx` 里的 AI 连接配置就是这么做的，并且为此**显式关闭了 `react-hooks/set-state-in-effect` 这一条 lint 规则**——这是官方推荐的例外，不要为了消除该警告而改回初始化里读取。
+
 ## 许可证
 
 [AGPL-3.0](LICENSE) © 2026 zhiqu contributors。
