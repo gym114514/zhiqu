@@ -9,7 +9,7 @@ import { approachLabel,approachLabels,SUPPLY_MAX_DEPTH,type AdaptiveLesson,type 
 
 const verdictLabels={supported:"材料支持",contradicted:"材料反驳",uncertain:"信息不足"};
 const nodeLabels={explain:"建立理解",choice:"检验想法",cards:"比较观察",classify:"辨认边界",worked_example:"示范与尝试",investigate:"评估证据",reflect:"表达与反思",supply:"按需补给",synthesis:"回答最初的问题"};
-const supplyKindLabels={term:"解释这个词",example:"换个例子",skip:"这部分我知道"};
+const supplyKindLabels={term:"解释这个词",example:"换个例子",skip:"这部分我知道",simpler:"这一步没跟上，讲简单点"};
 
 function SelfCheck({rubric,example}:{rubric:string[];example:string}){const [checked,setChecked]=useState<number[]>([]);return <div className="self-check"><p className="small-label">对照要点，自行检查；这里没有 AI 自动评分</p>{rubric.map((r,i)=><label className="check-row" key={i}><Checkbox checked={checked.includes(i)} onCheckedChange={v=>setChecked(c=>v===true?[...c,i]:c.filter(x=>x!==i))}/>{r}</label>)}<details><summary>展开一种可能的思路</summary><p>{example}</p></details></div>}
 

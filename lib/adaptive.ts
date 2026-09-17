@@ -18,11 +18,12 @@ const baseNode=z.discriminatedUnion("type",[explain,choice,cards,classify,worked
 // 补给：术语解释、换个例子、或说明"为什么暂时可以跳过"。深度最多两层，由 SUPPLY_MAX_DEPTH 约束。
 export const SUPPLY_MAX_DEPTH=2;
 const supplyBody=z.array(baseNode).min(1).max(2);
-export type SupplyKind="term"|"example"|"skip";
+export type SupplyKind="term"|"example"|"skip"|"simpler";
 export type SupplyLevel2={id:string;label:string;kind?:SupplyKind;helpsWith:string;body:z.infer<typeof baseNode>[];backLabel:string};
 export type Supply=SupplyLevel2&{supply?:SupplyLevel2[]};
+const supplyKinds=z.enum(["term","example","skip","simpler"]);
 const supply:z.ZodType<Supply>=z.lazy(()=>z.object({
- id:base.id,label:short,kind:z.enum(["term","example","skip"]).default("term"),
+ id:base.id,label:short,kind:supplyKinds.default("term"),
  helpsWith:t,body:supplyBody,backLabel:short,
  supply:z.array(supply).min(1).max(2).optional()
 }).strict());
@@ -65,8 +66,11 @@ export const adaptiveLessonSchema=z.object({
  plan:explorationPlan.optional(),
  steps:z.array(stepNode).min(2).max(8),boundary:t,followups:z.array(t).min(1).max(3),
  sources:z.array(z.object({title:t,url:z.string().url().refine(s=>s.startsWith("https://"),"来源必须是 HTTPS 链接")}).strict()).max(6),
- sourceStatus:z.enum(["model_knowledge","web_retrieved"]).optional()
+ sourceStatus:z.enum(["model_knowledge","web_retrieved"]).optional(),
+ // 按需生成中的中间态：计划已定、部分模块尚未展开。只用于生成过程中的合并，播放前必须去掉。
+ draft:z.literal(true).optional()
 }).strict().superRefine((lesson,ctx)=>{
+ const draft=lesson.draft===true;
  if(!lesson.sources.length&&lesson.sourceStatus!=="model_knowledge")ctx.addIssue({code:"custom",path:["sources"],message:"至少提供一个来源，或明确标注 model_knowledge（未联网核验）"});
  if(lesson.sourceStatus==="model_knowledge"&&lesson.sources.length)ctx.addIssue({code:"custom",path:["sources"],message:"未联网生成的草稿不应附带未经核对的来源"});
  if(!lesson.approach&&!lesson.plan)ctx.addIssue({code:"custom",path:["approach"],message:"需要 approach（单模块路径）或 plan（多模块导航）之一"});
@@ -91,7 +95,8 @@ export const adaptiveLessonSchema=z.object({
  });
  if(moduleIds.length){
   const unused=moduleIds.filter(id=>!usedModules.has(id));
-  if(unused.length)ctx.addIssue({code:"custom",path:["plan","modules"],message:`模块 ${unused.join("、")} 没有任何步骤，每个模块都要为主线服务`});
+  // 按需生成时尚未展开的模块必然没有步骤：只有草稿态才允许，成品脚本一律不允许。
+  if(unused.length&&!draft)ctx.addIssue({code:"custom",path:["plan","modules"],message:`模块 ${unused.join("、")} 没有任何步骤，每个模块都要为主线服务`});
   lesson.steps.forEach((s,i)=>{
    if(s.module===undefined)ctx.addIssue({code:"custom",path:["steps",i,"module"],message:"使用 plan 时每个步骤都要标明所属模块"});
   });
@@ -126,6 +131,9 @@ export const adaptiveLessonSchema=z.object({
  });
 });
 export type AdaptiveLesson=z.infer<typeof adaptiveLessonSchema>;
+/** 生成过程中的中间态：允许尚未展开的模块为空，播放前应先用 complete() 去掉草稿标记。 */
+export function draftOf(lesson:AdaptiveLesson):AdaptiveLesson{return {...lesson,draft:true};}
+export function complete(lesson:AdaptiveLesson):AdaptiveLesson{const {draft,...rest}=lesson;void draft;return rest as AdaptiveLesson;}
 export const approachLabels={mechanism:"理解机制",concept:"辨清概念",procedure:"学会方法",evidence:"探究证据"};
 // 导航型脚本不再有单一 approach：副标题显示组合后的学法，供左上角使用。
 export function approachLabel(lesson:AdaptiveLesson){
@@ -136,8 +144,8 @@ export function approachLabel(lesson:AdaptiveLesson){
 const str={type:"string"};const obj=(properties:Record<string,unknown>)=>({type:"object",properties,required:Object.keys(properties),additionalProperties:false});const arr=(items:unknown)=>({type:"array",items});
 // body 只允许六种主线活动；补给嵌套只再展开一层（最多两层）。
 const bodyNodeSchema=obj({id:str,title:str,type:{type:"string",enum:["explain","choice","cards","classify","worked_example","investigate","reflect"]},paragraphs:arr(str),question:str,options:arr(obj({label:str,correct:{type:"boolean"},feedback:str})),hint:str,instruction:str,cards:arr(obj({title:str,text:str,reveal:str})),categories:arr(obj({id:str,label:str})),items:arr(obj({text:str,categoryId:str,feedback:str})),task:str,walkthrough:arr(obj({title:str,detail:str})),practicePrompt:str,hints:arr(str),rubric:arr(str),example:str,context:str,materials:arr(obj({title:str,text:str,context:str})),claims:arr(obj({text:str,verdict:{type:"string",enum:["supported","contradicted","uncertain"]},feedback:str})),reflectionPrompt:str,prompt:str});
-const supplyBaseSchema=obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip"]},helpsWith:str,backLabel:str});
-const supplyItemSchema:Record<string,unknown>=obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip"]},helpsWith:str,body:arr(bodyNodeSchema),backLabel:str,supply:arr(obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip"]},helpsWith:str,body:arr(bodyNodeSchema),backLabel:str}))});
+const supplyBaseSchema=obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip","simpler"]},helpsWith:str,backLabel:str});
+const supplyItemSchema:Record<string,unknown>=obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip","simpler"]},helpsWith:str,body:arr(bodyNodeSchema),backLabel:str,supply:arr(obj({id:str,label:str,kind:{type:"string",enum:["term","example","skip","simpler"]},helpsWith:str,body:arr(bodyNodeSchema),backLabel:str}))});
 void supplyBaseSchema;
 export const adaptiveJsonSchema=obj({
  version:{type:"integer",enum:[2]},id:str,title:str,category:str,hook:str,minutes:{type:"integer"},objective:str,
