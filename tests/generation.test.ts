@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validExample, adaptiveLessonSchema, type AdaptiveLesson } from "../lib/adaptive";
+import { validExample, adaptiveLessonSchema, complete, draftOf, type AdaptiveLesson } from "../lib/adaptive";
 import { appendModule, generatePlan, generateModule, parseModuleReply } from "../lib/ai-client";
 import { emptyConnection } from "../lib/ai-connection";
 
@@ -70,6 +70,20 @@ test("按需生成：计划缺模块信息时要求重试，而不是产出半�
     generatePlan(connection, "主题", signal(), () => {}, (async () => "这不是 JSON") as never),
     /不是完整的 JSON/
   );
+});
+
+test("草稿态只服务于生成过程：成品脚本不允许留着未展开的模块", () => {
+  const lesson0 = adaptiveLessonSchema.parse(clone(validExample));
+  // 造一个"计划已定、第二个模块还没展开"的中间态
+  const partial: AdaptiveLesson = { ...clone(lesson0), steps: lesson0.steps.filter(s => s.module !== "correct") };
+  assert.throws(() => adaptiveLessonSchema.parse(clone(partial)), /没有任何步骤/, "成品态必须拒绝空模块");
+  const asDraft = draftOf(partial);
+  assert.equal(asDraft.draft, true);
+  assert.doesNotThrow(() => adaptiveLessonSchema.parse(clone(asDraft)), "草稿态应允许尚未展开的模块");
+  // 合并结束时必须摘掉草稿标记
+  const finished = complete(asDraft);
+  assert.equal(finished.draft, undefined);
+  assert.throws(() => adaptiveLessonSchema.parse(clone(finished)), /没有任何步骤/, "去掉草稿标记后仍应受成品规则约束");
 });
 
 test("appendModule 不依赖模型自觉：非最后模块也给了收尾时以原有收尾为准", () => {

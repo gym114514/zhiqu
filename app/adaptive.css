@@ -30,6 +30,12 @@
 .synthesis-reveal ul{margin:0;padding-left:20px}
 .synthesis-reveal li{font-size:15px;line-height:1.85;color:#c9d8c4;margin-bottom:7px}
 .supply-zone{margin-top:20px;padding-top:17px;border-top:1px dashed #3f5a50}
+.stuck-entries{margin-bottom:13px}
+.stuck-entries>.small-label{display:block;margin-bottom:9px;color:#9fb488}
+.stuck-row{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:9px}
+.supply-chip:disabled{opacity:.45;cursor:not-allowed;border-style:dotted}
+.supply-chip:disabled:hover{background:#22342c}
+.stuck-entries>.text-button{font-size:13px;padding:2px 0}
 .supply-list{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
 .supply-zone>.supply-list{margin:0}
 .supply-chip{border:1px dashed #61806a;background:#22342c;color:#dcf0b8;border-radius:8px;padding:9px 13px;font-size:14px;line-height:1.6;text-align:left}

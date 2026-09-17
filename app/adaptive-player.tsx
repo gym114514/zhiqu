@@ -80,6 +80,23 @@ function SupplyPanel({items,traversed,onOpen,onClose}:{items:Supply[];traversed:
  </section>;
 }
 
+/** 三个卡点入口：把"我卡住了"的三种常见情形变成可点的动作。
+ *  脚本里已有对应补给时直接展开；只有其他类型时，说明这一步暂时没有更简化的版本。 */
+function StuckEntries({items,onOpenKind,onOpenAll}:{items:Supply[];onOpenKind:(kind:string)=>void;onOpenAll:()=>void}){
+ const kinds=["term","simpler","skip"];
+ const available=(kind:string)=>items.find(s=>(s.kind??"term")===kind);
+ const labels:Record<string,string>={term:"这个词不懂",simpler:"这一步没跟上",skip:"这部分我知道"};
+ return <div className="stuck-entries">
+  <span className="small-label">这一步卡住了？</span>
+  <div className="stuck-row">{kinds.map(kind=>{
+   const hit=available(kind);
+   return <button className="supply-chip" key={kind} disabled={!hit} title={hit?hit.label:"这一步暂时没有这一类补给"}
+    onClick={()=>hit&&onOpenKind(kind)}>{labels[kind]}{hit?"":"（暂无）"}</button>;
+  })}</div>
+  <button className="text-button" onClick={onOpenAll}>看看这一步有哪些补给</button>
+ </div>;
+}
+
 export default function AdaptivePlayer({lesson,origin,onExit,onCustom}:{lesson:AdaptiveLesson;origin:"sample"|"ai"|"import";onExit:()=>void;onCustom:(t:string)=>void}){
  const [index,setIndex]=useState(0);const [notes,setNotes]=useState<Record<string,string>>({});const [sources,setSources]=useState(false);
  const [openSupply,setOpenSupply]=useState<{index:number;path:string[]}|null>(null);
@@ -123,7 +140,9 @@ export default function AdaptivePlayer({lesson,origin,onExit,onCustom}:{lesson:A
    :<>
     <Activity key={step.id} node={step} onNext={()=>setIndex(i=>i+1)} note={notes[step.id]||""} onNote={s=>setNotes(n=>({...n,[step.id]:s}))}/>
     {supplyItems.length>0&&<section className="supply-zone">
-     {supplyPath.length===0&&<p className="small-label">这一步卡住了？可以就地补一小块，补完回到这里。</p>}
+     {supplyPath.length===0&&<StuckEntries items={supplyItems}
+      onOpenKind={kind=>{const hit=supplyItems.find(s=>(s.kind??"term")===kind);if(hit)setOpenSupply({index,path:[hit.id]});}}
+      onOpenAll={()=>setOpenSupply(null)}/>}
      <SupplyPanel items={supplyItems} traversed={supplyPath} onOpen={path=>setOpenSupply(path.length?{index,path}:null)} onClose={()=>setOpenSupply(null)}/>
     </section>}
    </>)

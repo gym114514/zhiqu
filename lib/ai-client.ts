@@ -78,11 +78,12 @@ function moduleInstruction(planJson:string,moduleJson:string,purpose:string,isLa
   +"\n完整探索计划："+planJson
   +"\n本次要生成的模块："+moduleJson
   +"\n用途："+purpose
-  +'\n要求：steps 只包含该模块的活动（每个都要带 module 字段）；最后若是整个探索的收尾，才输出 synthesis，否则不要输出 synthesis；mainQuestion 必须是计划里的原问题；plan 必须原样保留；sources 为空数组。';
+  +'\n要求：steps 只包含该模块的活动（每个都要带 module 字段）；'
+  +(isLast?'这是最后一个模块，必须再给一个 synthesis 收尾，正面回答最初的 mainQuestion；':'不要输出 synthesis，收尾由最后一个模块负责；')
+  +'mainQuestion 必须是计划里的原问题；plan 必须原样保留；sources 为空数组。';
 }
 
-/** 把新模块的活动与收尾并回已有脚本，保证"收尾永远在最后"。 */
-/** 把新模块的活动与收尾并回已有脚本：收尾永远保留最后一个，且只保留一个。 */
+/** 把新模块的活动与收尾并回已有脚本：原有收尾优先，收尾唯一且永远在最后。 */
 export function appendModule(lesson:AdaptiveLesson,incoming:AdaptiveLesson):AdaptiveLesson{
  const main=lesson.steps.filter(s=>s.type!=="synthesis");
  // 原有收尾优先：模型在中间模块擅自给出收尾时，不能顶掉真正的收尾。
@@ -107,12 +108,12 @@ export async function generatePlan(connection:AIConnection,topic:string,signal:A
 
 /** 按需生成一个模块的活动，并并回已有脚本。 */
 export async function generateModule(connection:AIConnection,topic:string,lesson:AdaptiveLesson,moduleId:string,signal:AbortSignal,onPhase:(s:string)=>void,chat:Chat=requestChat){
- const module=lesson.plan?.modules.find(m=>m.id===moduleId);
- if(!module)throw new Error("这个模块不在探索计划里。");
+ const target=lesson.plan?.modules.find(m=>m.id===moduleId);
+ if(!target)throw new Error("这个模块不在探索计划里。");
  const missing=lesson.plan!.modules.filter(m=>!lesson.steps.some(s=>s.module===m.id)).map(m=>m.id);
  const isLast=missing.length===1&&missing[0]===moduleId;
- onPhase(`正在展开「${module.title}」…`);
- const system=moduleInstruction(JSON.stringify(lesson.plan),JSON.stringify(module),module.contributes,isLast);
+ onPhase(`正在展开「${target.title}」…`);
+ const system=moduleInstruction(JSON.stringify(lesson.plan),JSON.stringify(target),target.contributes,isLast);
  const raw=await chat({connection,messages:[{role:"system",content:system},{role:"user",content:JSON.stringify({topic})}],json:true,maxTokens:6000},signal);
  signal.throwIfAborted();
  const incoming=parseModuleReply(raw);
